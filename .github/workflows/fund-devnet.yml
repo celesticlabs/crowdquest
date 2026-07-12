@@ -36,5 +36,8 @@ jobs:
             https://api.devnet.solana.com \
             -H 'content-type: application/json' \
             --data "$payload")
-          jq -e '.result | type == "string"' <<<"$response" >/dev/null
+          if ! jq -e '.result | type == "string"' <<<"$response" >/dev/null; then
+            jq -c '{code:.error.code,message:.error.message}' <<<"$response"
+            exit 1
+          fi
           echo "Official devnet RPC accepted the airdrop request."
