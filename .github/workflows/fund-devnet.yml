@@ -1,0 +1,40 @@
+name: Fund TxLINE devnet wallet
+
+on:
+  workflow_dispatch:
+    inputs:
+      wallet:
+        description: Public Solana devnet wallet address
+        required: true
+        type: string
+      lamports:
+        description: Airdrop amount in lamports (maximum 0.1 SOL)
+        required: true
+        default: "20000000"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  request-airdrop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Request official Solana devnet airdrop
+        env:
+          WALLET: ${{ inputs.wallet }}
+          LAMPORTS: ${{ inputs.lamports }}
+        run: |
+          set -euo pipefail
+          [[ "$WALLET" =~ ^[1-9A-HJ-NP-Za-km-z]{32,44}$ ]]
+          [[ "$LAMPORTS" =~ ^[0-9]+$ ]]
+          (( LAMPORTS > 0 && LAMPORTS <= 100000000 ))
+          payload=$(jq -cn --arg wallet "$WALLET" --argjson amount "$LAMPORTS" \
+            '{jsonrpc:"2.0",id:1,method:"requestAirdrop",params:[$wallet,$amount,{commitment:"confirmed"}]}')
+          response=$(curl --fail-with-body --silent --show-error \
+            https://api.devnet.solana.com \
+            -H 'content-type: application/json' \
+            --data "$payload")
+          jq -e '.result | type == "string"' <<<"$response" >/dev/null
+          echo "Official devnet RPC accepted the airdrop request."
