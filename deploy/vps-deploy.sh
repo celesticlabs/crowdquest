@@ -85,6 +85,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 APP_DIR=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 ENV_FILE=${CROWDQUEST_ENV_FILE:-/etc/crowdquest/production.env}
 SECRETS_DIR=${CROWDQUEST_SECRETS_DIR:-/var/lib/crowdquest/secrets}
+CALLER_IMAGE_TAG=${CROWDQUEST_IMAGE_TAG:-}
 
 require_command aws
 require_command curl
@@ -96,6 +97,15 @@ set -a
 # shellcheck disable=SC1090
 . "$ENV_FILE"
 set +a
+
+# A release operator may pin the image tag to the reviewed Git commit. Keep
+# that explicit value even when the persistent environment still names the
+# previous release; the environment remains the fallback for manual runs.
+if [ -n "$CALLER_IMAGE_TAG" ]; then
+  CROWDQUEST_IMAGE_TAG=$CALLER_IMAGE_TAG
+  export CROWDQUEST_IMAGE_TAG
+fi
+unset CALLER_IMAGE_TAG
 
 require_variable SSM_POSTGRES_PASSWORD_PARAM
 require_variable SSM_ADMIN_TOKEN_PARAM
