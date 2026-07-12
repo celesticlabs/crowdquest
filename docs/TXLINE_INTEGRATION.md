@@ -12,7 +12,7 @@ CrowdQuest treats TxLINE as the authoritative match-data boundary when an activa
 | Token rejected, upstream unavailable, or no usable fixture evidence | `replay` | `false` | Authored fixture replay |
 | Auth succeeds and normalized fixture events resolve at least one quest | `live` | `true` | TxLINE-derived fixture projection |
 
-The response also reports `normalizedEvents`, `authoritativeQuests`, and whether the score stream loop is running. “Configured” in `/healthz` only means a token exists; it is not a connectivity claim.
+The response also reports `normalizedEvents`, `authoritativeQuests`, and `streaming`. `streaming: true` means an authenticated SSE response is presently open; retrying or merely running a background loop does not count. “Configured” in `/healthz` only means a token exists; it is not a connectivity claim.
 
 ## Endpoints used
 

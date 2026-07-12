@@ -1,0 +1,11 @@
+[Unit]
+Description=Run CrowdQuest PostgreSQL backup daily
+
+[Timer]
+OnCalendar=*-*-* 02:17:00 UTC
+RandomizedDelaySec=30m
+Persistent=true
+Unit=crowdquest-backup.service
+
+[Install]
+WantedBy=timers.target

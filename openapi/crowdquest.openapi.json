@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "CrowdQuest Unified API",
-    "version": "0.1.0",
-    "description": "Public product-state API for CrowdQuest rooms. TxLINE credentials and raw provider payloads never cross this boundary."
+    "version": "1.0.0",
+    "description": "Production product-state API for expiring, bearer-owned CrowdQuest rooms. TxLINE credentials and raw provider payloads never cross this boundary."
   },
   "servers": [
     { "url": "/", "description": "Same-origin production gateway" },
@@ -54,9 +54,10 @@
         "responses": {
           "201": {
             "description": "Session created",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoomSnapshot" } } }
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateSessionResponse" } } }
           },
-          "400": { "$ref": "#/components/responses/InvalidRequest" }
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
         }
       }
     },
@@ -66,12 +67,15 @@
         "tags": ["Rooms"],
         "operationId": "getRoom",
         "summary": "Read a room snapshot",
+        "security": [{ "sessionBearer": [] }],
         "responses": {
           "200": {
             "description": "Current room state",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoomSnapshot" } } }
           },
-          "404": { "$ref": "#/components/responses/SessionNotFound" }
+          "401": { "$ref": "#/components/responses/SessionTokenRequired" },
+          "404": { "$ref": "#/components/responses/SessionNotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
         }
       }
     },
@@ -82,6 +86,7 @@
         "operationId": "submitAnswer",
         "summary": "Settle one answer against the active quest",
         "description": "questId binds the request to the visible quest and rejects delayed or duplicate submissions after the room advances.",
+        "security": [{ "sessionBearer": [] }],
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnswerInput" } } }
@@ -92,11 +97,13 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnswerResponse" } } }
           },
           "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "$ref": "#/components/responses/SessionTokenRequired" },
           "404": { "$ref": "#/components/responses/SessionNotFound" },
           "409": {
             "description": "Room finished or quest no longer active",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
-          }
+          },
+          "429": { "$ref": "#/components/responses/RateLimited" }
         }
       }
     },
@@ -106,12 +113,42 @@
         "tags": ["Rooms"],
         "operationId": "resetRoom",
         "summary": "Reset a demonstration room",
+        "security": [{ "sessionBearer": [] }],
         "responses": {
           "200": {
             "description": "Reset room state",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoomSnapshot" } } }
           },
-          "404": { "$ref": "#/components/responses/SessionNotFound" }
+          "401": { "$ref": "#/components/responses/SessionTokenRequired" },
+          "404": { "$ref": "#/components/responses/SessionNotFound" },
+          "409": {
+            "description": "A concurrent room update won the optimistic lock",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/v1/rooms/{sessionId}/window": {
+      "parameters": [{ "$ref": "#/components/parameters/SessionId" }],
+      "post": {
+        "tags": ["Rooms"],
+        "operationId": "reopenAnswerWindow",
+        "summary": "Reopen the active replay answer window",
+        "description": "Creates a new server-authoritative deadline for the current quest without changing score or replay position.",
+        "security": [{ "sessionBearer": [] }],
+        "responses": {
+          "200": {
+            "description": "Room snapshot with a new answer deadline",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RoomSnapshot" } } }
+          },
+          "401": { "$ref": "#/components/responses/SessionTokenRequired" },
+          "404": { "$ref": "#/components/responses/SessionNotFound" },
+          "409": {
+            "description": "Room finished or a concurrent room update won the optimistic lock",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "429": { "$ref": "#/components/responses/RateLimited" }
         }
       }
     },
@@ -137,7 +174,8 @@
   },
   "components": {
     "securitySchemes": {
-      "adminBearer": { "type": "http", "scheme": "bearer", "bearerFormat": "opaque admin token" }
+      "adminBearer": { "type": "http", "scheme": "bearer", "bearerFormat": "opaque admin token" },
+      "sessionBearer": { "type": "http", "scheme": "bearer", "bearerFormat": "per-room opaque token" }
     },
     "parameters": {
       "SessionId": {
@@ -153,7 +191,18 @@
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "SessionNotFound": {
-        "description": "Session was not found",
+        "description": "Session was not found, expired, or the bearer token was invalid",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "SessionTokenRequired": {
+        "description": "A room bearer token is required",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "RateLimited": {
+        "description": "The caller exceeded the route limit",
+        "headers": {
+          "Retry-After": { "schema": { "type": "integer", "minimum": 0 } }
+        },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "InternalError": {
@@ -165,10 +214,11 @@
       "Health": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["status", "service", "txlineConfigured", "time"],
+        "required": ["status", "service", "databaseReady", "txlineConfigured", "time"],
         "properties": {
-          "status": { "const": "ok" },
+          "status": { "type": "string", "enum": ["ok", "degraded"] },
           "service": { "const": "crowdquest-orchestrator" },
+          "databaseReady": { "type": "boolean" },
           "txlineConfigured": { "type": "boolean" },
           "time": { "type": "string", "format": "date-time" }
         }
@@ -186,7 +236,7 @@
           "endpoints": { "type": "array", "items": { "type": "string" } },
           "normalizedEvents": { "type": "integer", "minimum": 0 },
           "authoritativeQuests": { "type": "integer", "minimum": 0 },
-          "streaming": { "type": "boolean" }
+          "streaming": { "type": "boolean", "description": "True only while an authenticated TxLINE SSE response is actively open." }
         }
       },
       "CreateSessionInput": {
@@ -206,12 +256,13 @@
       "Session": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "displayName", "points", "streak"],
+        "required": ["id", "displayName", "points", "streak", "expiresAt"],
         "properties": {
           "id": { "type": "string", "format": "uuid" },
           "displayName": { "type": "string" },
           "points": { "type": "integer", "minimum": 0 },
-          "streak": { "type": "integer", "minimum": 0 }
+          "streak": { "type": "integer", "minimum": 0 },
+          "expiresAt": { "type": "string", "format": "date-time" }
         }
       },
       "Team": {
@@ -295,17 +346,33 @@
       "RoomSnapshot": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["session", "match", "event", "eventIndex", "eventCount", "quest", "finished", "answers", "source"],
+        "required": ["session", "match", "event", "eventIndex", "eventCount", "questClosesAt", "quest", "finished", "answers", "source"],
         "properties": {
           "session": { "$ref": "#/components/schemas/Session" },
           "match": { "$ref": "#/components/schemas/Match" },
           "event": { "$ref": "#/components/schemas/MatchEvent" },
           "eventIndex": { "type": "integer", "minimum": 0 },
           "eventCount": { "type": "integer", "minimum": 1 },
+          "questClosesAt": { "anyOf": [{ "type": "string", "format": "date-time" }, { "type": "null" }] },
           "quest": { "anyOf": [{ "$ref": "#/components/schemas/PublicQuest" }, { "type": "null" }] },
           "finished": { "type": "boolean" },
           "answers": { "type": "array", "items": { "$ref": "#/components/schemas/SettledAnswer" } },
           "source": { "$ref": "#/components/schemas/SourceStatus" }
+        }
+      },
+      "CreateSessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["room", "accessToken"],
+        "properties": {
+          "room": { "$ref": "#/components/schemas/RoomSnapshot" },
+          "accessToken": {
+            "type": "string",
+            "minLength": 40,
+            "maxLength": 128,
+            "writeOnly": true,
+            "description": "Returned once. Send as a Bearer token on all room reads and mutations."
+          }
         }
       },
       "PayoutIntent": {
@@ -348,6 +415,7 @@
         "properties": {
           "error": { "type": "string" },
           "activeQuestId": { "type": "string" },
+          "retryAfter": { "anyOf": [{ "type": "string" }, { "type": "integer" }, { "type": "null" }] },
           "issues": { "type": "array", "items": { "type": "object" } }
         }
       }

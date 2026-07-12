@@ -135,4 +135,5 @@ until curl --fail --silent --show-error --max-time 5 "$health_url" >/dev/null; d
 done
 
 compose ps
+"$APP_DIR/deploy/install-vps-operations.sh" "$APP_DIR"
 printf '%s\n' "CrowdQuest containers are healthy on the loopback gateway."

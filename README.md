@@ -30,15 +30,15 @@ The included France–Morocco fixture is a scripted historical demonstration, so
 | --- | --- |
 | Fan room | Responsive web experience with five quests, answer locking, points, streaks, leaderboard, reset, and completion state |
 | Historical demonstration | Deterministic six-event replay for fixture `18209181` |
-| Orchestrator API | Fastify service for guest sessions, room state, answers, reset, source status, and protected TxLINE refresh |
-| Persistence | In-memory by default; PostgreSQL when `DATABASE_URL` is configured |
+| Orchestrator API | Fastify service with expiring bearer-owned guest rooms, server answer deadlines, rate limits, concurrent-settlement protection, source status, and protected TxLINE refresh |
+| Persistence | In-memory by default; PostgreSQL with expiry cleanup, optimistic versions, and verified scheduled backups in production |
 | TxLINE boundary | Server-only guest auth, fixture health check, historical normalization, SSE ingestion, and deterministic TxLINE-derived quest resolution; requires a valid API token |
 | Local fallback | The browser remains playable if the orchestrator or TxLINE is unavailable |
 | Reward boundary | Capped payout-intent metadata only; no signer, transfer, or completed payout |
 | Polar | Optional outbound checkout link for the commercial private-room concept; no subscription lifecycle is implemented |
 | Receipts view | Product-level decision receipts and policy explanation; not a Solana proof verifier |
 
-See [TxLINE integration](docs/TXLINE_INTEGRATION.md) for the precise connected/replay behavior and [Security](docs/SECURITY.md) for the trust boundary.
+See [TxLINE integration](docs/TXLINE_INTEGRATION.md) for the precise connected/replay behavior, [Security](docs/SECURITY.md) for the trust boundary, and [Production operations](docs/OPERATIONS.md) for deployment and recovery.
 
 ## Technology
 
@@ -112,6 +112,7 @@ worker/                      vinext Cloudflare Worker entry point
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Security](docs/SECURITY.md)
+- [Production operations](docs/OPERATIONS.md)
 - [Design system](docs/DESIGN_SYSTEM.md)
 - [TxLINE integration](docs/TXLINE_INTEGRATION.md)
 - [Unified OpenAPI contract](openapi/crowdquest.openapi.json)

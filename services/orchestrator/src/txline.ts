@@ -10,6 +10,7 @@ export class TxLineClient {
   #projection: FixtureProjection | null = null;
   #projectionLoad: Promise<FixtureProjection> | null = null;
   #streamAbort: AbortController | null = null;
+  #streamConnected = false;
 
   constructor(
     private readonly origin: string,
@@ -77,6 +78,7 @@ export class TxLineClient {
   stop() {
     this.#streamAbort?.abort();
     this.#streamAbort = null;
+    this.#streamConnected = false;
   }
 
   private buildStatus(connected: boolean, mode: "live" | "replay"): SourceStatus {
@@ -89,7 +91,7 @@ export class TxLineClient {
       endpoints: ["/api/fixtures/snapshot", `/api/scores/historical/${this.fixtureId}`, `/api/odds/snapshot/${this.fixtureId}`, "/api/scores/stream"],
       normalizedEvents: this.#projection?.eventCount ?? this.#events.length,
       authoritativeQuests: this.#projection?.resolutions.size ?? 0,
-      streaming: Boolean(this.#streamAbort && !this.#streamAbort.signal.aborted),
+      streaming: this.#streamConnected,
     };
   }
 
@@ -106,10 +108,14 @@ export class TxLineClient {
       try {
         const response = await this.openScoreStream(signal);
         if (!response.body) throw new Error("TxLINE score stream returned no body");
+        this.#streamConnected = true;
         await this.consumeSse(response.body, signal);
       } catch {
+        this.#streamConnected = false;
         if (signal.aborted) return;
         await abortableDelay(5_000, signal);
+      } finally {
+        this.#streamConnected = false;
       }
     }
   }

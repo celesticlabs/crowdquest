@@ -26,14 +26,18 @@ type SettledAnswer = {
 };
 
 type ApiRoom = {
-  session: { id: string; points: number; streak: number };
+  session: { id: string; points: number; streak: number; expiresAt: string };
   eventIndex: number;
+  questClosesAt: string | null;
   source: { connected: boolean; mode: "live" | "replay" };
   answers: Array<{ questId: string; choiceId: string; correct: boolean; points: number }>;
 };
 
+type CreateSessionResponse = { room: ApiRoom; accessToken: string };
+
 const API_BASE = process.env.NEXT_PUBLIC_CROWDQUEST_API_URL ?? "";
 const POLAR_CHECKOUT_URL = process.env.NEXT_PUBLIC_POLAR_CHECKOUT_URL;
+const LOCAL_ANSWER_WINDOW_SECONDS = 24;
 
 const EVENT_COLORS = {
   kickoff: "event-neutral",
@@ -47,12 +51,13 @@ export function MatchRoom() {
   const [view, setView] = useState<View>("room");
   const [eventIndex, setEventIndex] = useState(0);
   const [choice, setChoice] = useState<string | null>(null);
-  const [seconds, setSeconds] = useState(24);
+  const [seconds, setSeconds] = useState(LOCAL_ANSWER_WINDOW_SECONDS);
   const [points, setPoints] = useState(860);
   const [streak, setStreak] = useState(3);
   const [answers, setAnswers] = useState<SettledAnswer[]>([]);
   const [lastResult, setLastResult] = useState<SettledAnswer | null>(null);
   const [apiSessionId, setApiSessionId] = useState<string | null>(null);
+  const [apiSessionToken, setApiSessionToken] = useState<string | null>(null);
   const [apiAvailable, setApiAvailable] = useState(false);
   const [sourceConnected, setSourceConnected] = useState(false);
   const [connectionPending, setConnectionPending] = useState(true);
@@ -113,12 +118,16 @@ export function MatchRoom() {
           body: JSON.stringify({ displayName: "Guest fan" }),
         });
         if (!response.ok) throw new Error(`session request failed: ${response.status}`);
-        const room = await response.json() as ApiRoom;
+        const payload = await response.json() as CreateSessionResponse;
+        if (!payload.accessToken) throw new Error("session response did not include room authority");
+        const room = payload.room;
         if (cancelled) return;
         setApiSessionId(room.session.id);
+        setApiSessionToken(payload.accessToken);
         setApiAvailable(true);
         setSourceConnected(room.source.connected);
         setConnectionPending(false);
+        setSeconds(secondsUntil(room.questClosesAt));
         setOperationMessage(room.source.connected ? "TxLINE source connected through the server adapter." : "Replay adapter responded and is ready.");
         setOperationTone(room.source.connected ? "success" : "info");
       } catch {
@@ -168,14 +177,28 @@ export function MatchRoom() {
     setOperationMessage("Locking answer and verifying the next match event…");
     setOperationTone("info");
     let settledLocallyAfterFailure = false;
-    if (apiSessionId) {
+    if (apiSessionId && apiSessionToken) {
       try {
         const response = await fetch(`${API_BASE}/v1/rooms/${apiSessionId}/answers`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", authorization: `Bearer ${apiSessionToken}` },
           body: JSON.stringify({ questId: quest.id, choiceId: choice }),
         });
-        if (!response.ok) throw new Error(`answer request failed: ${response.status}`);
+        if (!response.ok) {
+          const problem = await response.json().catch(() => ({ error: "request_rejected" })) as { error?: string };
+          if (response.status === 401 || response.status === 404) {
+            setApiAvailable(false);
+            setSourceConnected(false);
+            setApiSessionId(null);
+            setApiSessionToken(null);
+          }
+          setOperationMessage(problem.error === "answer_window_closed"
+            ? "The server answer window is closed. Restart the window before submitting."
+            : "The server rejected this answer. Refresh the room state and try again.");
+          setOperationTone("warning");
+          setSubmitting(false);
+          return;
+        }
         const payload = await response.json() as { room: ApiRoom; settlement: { questId: string; choiceId: string; correct: boolean; points: number } };
         const settlement = { questId: payload.settlement.questId, choice: payload.settlement.choiceId, correct: payload.settlement.correct, points: payload.settlement.points };
         setEventIndex(payload.room.eventIndex);
@@ -185,7 +208,7 @@ export function MatchRoom() {
         setLastResult(settlement);
         setSourceConnected(payload.room.source.connected);
         setChoice(null);
-        setSeconds(24);
+        setSeconds(secondsUntil(payload.room.questClosesAt));
         setOperationMessage(settlement.correct ? `Answer settled correctly. ${settlement.points} points added.` : "Answer settled. No points added this round.");
         setOperationTone("success");
         setSubmitting(false);
@@ -194,6 +217,7 @@ export function MatchRoom() {
         setApiAvailable(false);
         setSourceConnected(false);
         setApiSessionId(null);
+        setApiSessionToken(null);
         settledLocallyAfterFailure = true;
       }
     }
@@ -211,7 +235,7 @@ export function MatchRoom() {
     setStreak((current) => (correct ? current + 1 : 0));
     setEventIndex((current) => Math.min(current + 1, events.length - 1));
     setChoice(null);
-    setSeconds(24);
+    setSeconds(LOCAL_ANSWER_WINDOW_SECONDS);
     setOperationMessage(settledLocallyAfterFailure
       ? "Replay service was interrupted. This result was settled from the bundled deterministic fixture."
       : correct
@@ -222,17 +246,23 @@ export function MatchRoom() {
   }
 
   async function resetReplay() {
-    if (apiSessionId) {
+    let nextSeconds = LOCAL_ANSWER_WINDOW_SECONDS;
+    if (apiSessionId && apiSessionToken) {
       try {
-        await fetch(`${API_BASE}/v1/rooms/${apiSessionId}/reset`, { method: "POST" });
+        const response = await fetch(`${API_BASE}/v1/rooms/${apiSessionId}/reset`, { method: "POST", headers: { authorization: `Bearer ${apiSessionToken}` } });
+        if (!response.ok) throw new Error(`reset request failed: ${response.status}`);
+        const room = await response.json() as ApiRoom;
+        nextSeconds = secondsUntil(room.questClosesAt);
       } catch {
         setApiAvailable(false);
         setSourceConnected(false);
+        setApiSessionId(null);
+        setApiSessionToken(null);
       }
     }
     setEventIndex(0);
     setChoice(null);
-    setSeconds(24);
+    setSeconds(nextSeconds);
     setPoints(860);
     setStreak(3);
     setAnswers([]);
@@ -252,9 +282,7 @@ export function MatchRoom() {
 
   function handlePrimaryAction() {
     if (timedOut) {
-      setSeconds(24);
-      setOperationMessage("Answer window restarted. Choose one option before time expires.");
-      setOperationTone("info");
+      void restartAnswerWindow();
       return;
     }
     if (choice) {
@@ -264,6 +292,31 @@ export function MatchRoom() {
     focusQuest();
     setOperationMessage("Choose an answer, then lock it before the timer expires.");
     setOperationTone("info");
+  }
+
+  async function restartAnswerWindow() {
+    if (apiSessionId && apiSessionToken) {
+      try {
+        const response = await fetch(`${API_BASE}/v1/rooms/${apiSessionId}/window`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${apiSessionToken}` },
+        });
+        if (!response.ok) throw new Error(`window request failed: ${response.status}`);
+        const room = await response.json() as ApiRoom;
+        setSeconds(secondsUntil(room.questClosesAt));
+        setOperationMessage("Answer window restarted by the server. Choose one option before time expires.");
+        setOperationTone("info");
+        return;
+      } catch {
+        setApiAvailable(false);
+        setSourceConnected(false);
+        setApiSessionId(null);
+        setApiSessionToken(null);
+      }
+    }
+    setSeconds(LOCAL_ANSWER_WINDOW_SECONDS);
+    setOperationMessage("Server window unavailable. Continuing with a local deterministic answer window.");
+    setOperationTone("warning");
   }
 
   function handleChoiceKeyDown(index: number, keyboardEvent: ReactKeyboardEvent<HTMLButtonElement>) {
@@ -586,6 +639,11 @@ export function MatchRoom() {
       </footer>
     </main>
   );
+}
+
+function secondsUntil(isoTime: string | null) {
+  if (!isoTime) return LOCAL_ANSWER_WINDOW_SECONDS;
+  return Math.max(0, Math.ceil((Date.parse(isoTime) - Date.now()) / 1_000));
 }
 
 function TraceView({

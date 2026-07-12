@@ -36,13 +36,22 @@ export type SettledAnswer = {
 
 export type RoomState = {
   id: string;
+  accessTokenHash: string;
   displayName: string;
   eventIndex: number;
   points: number;
   streak: number;
   answers: SettledAnswer[];
+  questClosesAt: string | null;
+  version: number;
   createdAt: string;
   updatedAt: string;
+  expiresAt: string;
+};
+
+export type CreatedRoom = {
+  state: RoomState;
+  accessToken: string;
 };
 
 export type SourceStatus = {
@@ -58,7 +67,7 @@ export type SourceStatus = {
 };
 
 export type RoomSnapshot = {
-  session: Pick<RoomState, "id" | "displayName" | "points" | "streak">;
+  session: Pick<RoomState, "id" | "displayName" | "points" | "streak" | "expiresAt">;
   match: {
     id: number;
     competition: string;
@@ -69,6 +78,7 @@ export type RoomSnapshot = {
   event: MatchEvent;
   eventIndex: number;
   eventCount: number;
+  questClosesAt: string | null;
   quest: Omit<Quest, "correctChoice"> | null;
   finished: boolean;
   answers: SettledAnswer[];

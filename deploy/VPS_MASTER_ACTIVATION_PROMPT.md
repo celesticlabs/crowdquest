@@ -27,7 +27,7 @@ Known production boundaries:
 2. Never use a wallet mainnet, spend real funds, send a Coinbase transaction, or turn an intent into a payout.
 3. Never claim `live`, `verified`, `paid`, `proof`, or `append-only` unless the named runtime evidence supports that exact word.
 4. Never alter `skills`, `lens`, `command`, `aegis`, `/kit-api`, the host firewall, DNS, or another service’s Caddy route.
-5. Never reset or discard an unknown working-tree change. A dirty production checkout is a blocker to diagnose.
+5. Never reset or discard an unknown working-tree change. Deploy from a clean immutable release worktree when the operator checkout is dirty.
 6. Preserve loopback-only binding, private database networking, read-only filesystems, capability drops, `no-new-privileges`, and root-only secrets.
 7. Historical or local replay is an acceptable production state when disclosed. TxLINE activation is optional and must not block the redesigned product release.
 8. Do not expose Open Design publicly, mount `/opt/crowdquest` into it, or give it host credentials or a Docker socket.
@@ -47,20 +47,23 @@ curl -fsS https://vps.avasis.ai/v1/source | jq '{provider,mode,connected,fixture
 systemctl is-active caddy docker
 ```
 
-Require a clean checkout, `main`, the expected repository, active Caddy/Docker, and a readable environment file. Record the current commit as `PREVIOUS_COMMIT`; do not reveal environment values.
+Require the expected repository, active Caddy/Docker, and a readable environment file. Record the current deployed symlink target and commit as `PREVIOUS_COMMIT`; do not reveal environment values. Preserve every operator-checkout modification.
 
 ## Phase 2 — Fast-forward and deploy
 
 ```bash
 cd /opt/crowdquest
-PREVIOUS_COMMIT=$(git rev-parse HEAD)
+PREVIOUS_COMMIT=$(git -C /opt/crowdquest-current rev-parse HEAD 2>/dev/null || git rev-parse HEAD)
 git fetch origin main
-git merge --ff-only origin/main
-RELEASE_COMMIT=$(git rev-parse HEAD)
+RELEASE_COMMIT=$(git rev-parse origin/main)
+RELEASE_DIR="/opt/crowdquest-releases/$RELEASE_COMMIT"
+test -d "$RELEASE_DIR" || git worktree add --detach "$RELEASE_DIR" "$RELEASE_COMMIT"
+cd "$RELEASE_DIR"
+docker compose --env-file /etc/crowdquest/production.env config >/dev/null
 
 sudo CROWDQUEST_ENV_FILE=/etc/crowdquest/production.env \
   CROWDQUEST_IMAGE_TAG="$RELEASE_COMMIT" \
-  /opt/crowdquest/deploy/vps-deploy.sh
+  "$RELEASE_DIR/deploy/vps-deploy.sh"
 ```
 
 Do not use `git reset`, `git clean`, or an unreviewed force flag. The deployment script must retrieve secrets through AWS SSM, build the pinned Compose stack, keep the gateway on loopback, and wait for health.
@@ -70,7 +73,7 @@ Do not use `git reset`, `git clean`, or an unreviewed force flag. The deployment
 Run all checks. Redact unexpected sensitive output before reporting.
 
 ```bash
-cd /opt/crowdquest
+cd /opt/crowdquest-current
 docker compose --env-file /etc/crowdquest/production.env ps
 
 curl -fsS -o /dev/null https://vps.avasis.ai/
@@ -90,10 +93,16 @@ session=$(curl -fsS -X POST https://vps.avasis.ai/v1/sessions \
   -H 'content-type: application/json' \
   --data '{"displayName":"Release verification"}')
 printf '%s' "$session" | jq -e '
-  .session.id and .source.mode and
-  ((.quest // {}) | has("correctChoice") | not)
+  .room.session.id and .room.session.expiresAt and .accessToken and .room.source.mode and
+  ((.room.quest // {}) | has("correctChoice") | not) and
+  (.room | has("accessTokenHash") | not)
 '
-session_id=$(printf '%s' "$session" | jq -r '.session.id')
+session_id=$(printf '%s' "$session" | jq -r '.room.session.id')
+access_token=$(printf '%s' "$session" | jq -r '.accessToken')
+unset session
+
+test "$(curl -sS -o /dev/null -w '%{http_code}' "https://vps.avasis.ai/v1/rooms/$session_id")" = 401
+test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Origin: https://untrusted.invalid' https://vps.avasis.ai/v1/source)" = 403
 
 for step in \
   'penalty-result:no' \
@@ -105,12 +114,21 @@ do
   quest_id=${step%%:*}
   choice_id=${step#*:}
   result=$(curl -fsS -X POST "https://vps.avasis.ai/v1/rooms/$session_id/answers" \
+    -H "authorization: Bearer $access_token" \
     -H 'content-type: application/json' \
     --data "{\"questId\":\"$quest_id\",\"choiceId\":\"$choice_id\"}")
   printf '%s' "$result" | jq -e '.settlement.questId and (.settlement.correct | type == "boolean")'
 done
 
 printf '%s' "$result" | jq -e '.room.session.points == 1490 and .room.session.streak == 8'
+unset access_token result
+
+curl -fsSI https://vps.avasis.ai/ | grep -qi '^content-security-policy:'
+systemctl is-active --quiet crowdquest-backup.timer
+latest_backup=$(find /var/backups/crowdquest -maxdepth 1 -name '*.dump' -type f -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+test -n "$latest_backup"
+sha256sum -c "$latest_backup.sha256"
+docker compose --env-file /etc/crowdquest/production.env exec -T postgres pg_restore --list < "$latest_backup" >/dev/null
 ```
 
 Acceptance requires:
@@ -119,10 +137,12 @@ Acceptance requires:
 - `/`, `/design-system`, and `/demo.mp4` returning success;
 - `/kit-api/health` still returning success;
 - session payloads not exposing `correctChoice`;
+- room routes rejecting missing bearer ownership and untrusted origins;
 - all five answers settling without duplicate-submission errors;
 - final points equal to `1490` with an `8` streak for the documented answer path;
 - the UI source label matching `/v1/source` (`live`, `API replay`, or `local replay`);
 - the design-system page showing `CrowdQuest Signal OS · 1.0` and using Lucide icons, not emoji.
+- a Content Security Policy present and the daily verified-backup timer active.
 
 If browser automation is available, also capture 1440×1000 and 390×844 screenshots of `/` plus `/design-system`, confirm no horizontal overflow, and keyboard-test A/B plus arrow-key answer selection and the lock action.
 
@@ -152,12 +172,10 @@ Keep `PAYOUT_MODE=approval`. A configured agent URL or token is not payment evid
 If the new release fails and diagnosis cannot restore it promptly, keep evidence, then redeploy the recorded commit without deleting data:
 
 ```bash
-cd /opt/crowdquest
-git switch --detach "$PREVIOUS_COMMIT"
+cd "/opt/crowdquest-releases/$PREVIOUS_COMMIT"
 sudo CROWDQUEST_ENV_FILE=/etc/crowdquest/production.env \
   CROWDQUEST_IMAGE_TAG="$PREVIOUS_COMMIT" \
-  /opt/crowdquest/deploy/vps-deploy.sh
-git switch main
+  ./deploy/vps-deploy.sh
 ```
 
 Do not remove the PostgreSQL volume. Report the failed release commit, failing checkpoint, sanitized logs, and successful rollback commit.
@@ -171,6 +189,7 @@ Return only:
 - HTTP status for product, design system, demo, and `/kit-api/health`;
 - sanitized source state (`provider`, `mode`, `connected`, fixture, event/quest counts);
 - five-step replay result and final points/streak;
+- CSP status and latest verified-backup/timer status;
 - whether TxLINE, Polar, and Coinbase were left replay/optional/approval-gated;
 - confirmation that unrelated routes, services, firewall, DNS, volumes, and Open Design isolation were unchanged;
 - any single external blocker and its safe next action.
