@@ -19,15 +19,15 @@ The India deadline arrives first, and its rules require the matching official-tr
 
 Do not submit until every required item is true:
 
-- [ ] The app is reachable at a public URL while signed out.
-- [ ] The repository is public and contains the final source and these documents.
-- [ ] The demo is public/unlisted, viewable while signed out, and under five minutes.
+- [x] The app is reachable at a public URL while signed out.
+- [x] The repository is public and contains the final source and these documents.
+- [x] The demo is public/unlisted, viewable while signed out, and under five minutes.
 - [ ] The deployed runtime honestly demonstrates TxLINE as a primary data source, not only static replay data.
-- [ ] `/v1/source` and the demo agree about connected versus replay mode.
+- [x] `/v1/source` and the demo agree about connected versus replay mode.
 - [ ] At least one accepted TxLINE fixture/score operation has been tested and documented without exposing credentials.
-- [ ] The team has written genuine TxLINE API feedback from that test.
-- [ ] No screen or copy implies that test intents are completed payouts.
-- [ ] The project was built specifically for this hackathon.
+- [x] The team has written genuine TxLINE API feedback from that test.
+- [x] No screen or copy implies that test intents are completed payouts.
+- [x] The project was built specifically for this hackathon.
 - [ ] The submitting owner/team is eligible for Superteam Earn; the India submission is from an India-based individual or team of one to three.
 
 Replay is valuable for judging after matches finish, but replay alone must not be used to claim the live/primary-data requirement. Payout execution is not required for the consumer track and should remain outside the claim set.
@@ -39,11 +39,11 @@ Prepare these once and reuse the exact same links in both forms:
 | Asset | Value |
 | --- | --- |
 | Project title | `CrowdQuest — Every Match Moment Becomes a Quest` |
-| Public app | `<PUBLIC_APP_URL>` |
-| Public repository | `<PUBLIC_REPOSITORY_URL>` |
-| Demo video | `<PUBLIC_VIDEO_URL>` |
-| Technical documentation | `<PUBLIC_REPOSITORY_URL>/blob/main/docs/ARCHITECTURE.md` |
-| TxLINE integration notes | `<PUBLIC_REPOSITORY_URL>/blob/main/docs/TXLINE_INTEGRATION.md` |
+| Public app | `https://vps.avasis.ai` |
+| Public repository | `https://github.com/celesticlabs/crowdquest` |
+| Demo video | `https://vps.avasis.ai/demo.mp4` |
+| Technical documentation | `https://github.com/celesticlabs/crowdquest/blob/main/docs/ARCHITECTURE.md` |
+| TxLINE integration notes | `https://github.com/celesticlabs/crowdquest/blob/main/docs/TXLINE_INTEGRATION.md` |
 
 Verify all five links from a private/incognito window.
 
@@ -72,16 +72,16 @@ After live integration is verified, update only the TxLINE sentence with the exa
 
 ### TxLINE feedback worksheet
 
-The sponsor explicitly requires firsthand feedback. Complete this after the real API test:
+The sponsor explicitly requires firsthand feedback. Current tested feedback:
 
 ```text
-Endpoint(s) tested:
-Network and fixture:
-What worked well:
-Schema or documentation detail that helped:
-Friction encountered:
-Exact error/status, if any:
-Workaround or improvement requested:
+Endpoint(s) tested: POST /auth/guest/start (accepted); protected fixture/history/stream routes implemented but not yet credential-accepted.
+Network and fixture: TxLINE devnet; fixture 18209181.
+What worked well: Guest auth returned HTTP 200 with the documented JWT shape. The OpenAPI contract and official examples clearly define the dual-header request model, fixture-scoped SSE filter, subscribe instruction, and `${txSig}::${jwt}` activation signature.
+Schema or documentation detail that helped: The official score schema, devnet IDL, program address, token mint, and runnable subscription examples made a narrow normalizer and deterministic fixture projection possible.
+Friction encountered: Free data access still needs a funded Solana devnet fee payer. The official faucet failed from the developer machine, AWS host, and clean GitHub runner; devnet-pow also requires an initial fee balance.
+Exact error/status, if any: JSON-RPC -32603 Internal error and HTTP/JSON-RPC 429 airdrop-limit responses.
+Workaround or improvement requested: Provide a hackathon read-only token, sponsor the activation fee transaction, or reserve faucet capacity for registered teams. Replay remains visibly disclosed until activation succeeds.
 ```
 
 Do not turn documentation expectations into fabricated experience. If access failed, report the exact activation or request failure and what was still implemented.

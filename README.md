@@ -6,6 +6,10 @@
 
 CrowdQuest was created for the TxODDS World Cup Hackathon, Consumer and Fan Experiences track, and the Superteam India regional buildathon.
 
+[Live MVP](https://vps.avasis.ai) · [75-second demo](https://vps.avasis.ai/demo.mp4) · [Design system](https://vps.avasis.ai/design-system) · [Runtime source status](https://vps.avasis.ai/v1/source)
+
+![CrowdQuest match room](public/screenshot.jpeg)
+
 ## Why CrowdQuest
 
 Most sports products ask a fan to study a dashboard or place a wager. CrowdQuest asks one clear question at the moment it matters. Fans do not stake funds. Sponsors fund the room, fans compete for points, and the product makes source state and settlement state visible.
@@ -112,6 +116,7 @@ worker/                      vinext Cloudflare Worker entry point
 - [TxLINE integration](docs/TXLINE_INTEGRATION.md)
 - [Unified OpenAPI contract](openapi/crowdquest.openapi.json)
 - [Four-minute demo script](docs/DEMO_SCRIPT.md)
+- [Form-ready submission copy](docs/SUBMISSION_COPY.md)
 - [Dual-submission checklist](docs/SUBMISSION.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 

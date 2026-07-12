@@ -3,7 +3,7 @@ import { extname, join, relative } from "node:path";
 
 const root = new URL("..", import.meta.url).pathname;
 const skippedDirectories = new Set([".git", ".next", ".vinext", ".wrangler", "dist", "node_modules", "coverage"]);
-const skippedExtensions = new Set([".jpeg", ".jpg", ".png", ".woff", ".woff2", ".sqlite", ".db"]);
+const skippedExtensions = new Set([".jpeg", ".jpg", ".mp4", ".png", ".woff", ".woff2", ".sqlite", ".db"]);
 const signatures = [
   ["AWS access key", /\bAKIA[0-9A-Z]{16}\b/],
   ["private-key block", /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/],
