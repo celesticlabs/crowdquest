@@ -9,7 +9,7 @@ fail() {
 [ "$(id -u)" -eq 0 ] || fail "run as root"
 [ "$#" -eq 1 ] || fail "usage: install-vps-operations.sh <release-directory>"
 
-APP_DIR=$(CDPATH= cd -- "$1" && pwd)
+APP_DIR=$(CDPATH= cd -- "$1" && pwd -P)
 DEPLOY_DIR="$APP_DIR/deploy"
 [ -f "$APP_DIR/docker-compose.yml" ] || fail "release Compose file is missing"
 
