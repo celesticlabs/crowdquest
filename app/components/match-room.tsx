@@ -367,6 +367,9 @@ export function MatchRoom() {
         </div>
 
         <div className="topbar-actions">
+          <Button variant="panel" size="icon" className="icon-button" aria-label="Open TxLINE signal monitor" onClick={() => setView("signal")}>
+            <Icon name="radio" />
+          </Button>
           <Button variant="panel" size="icon" className="icon-button" aria-label="How CrowdQuest works" onClick={() => setView("trace")}>
             <Icon name="info" />
           </Button>
