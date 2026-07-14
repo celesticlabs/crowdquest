@@ -77,3 +77,19 @@ test("parses TxLINE historical SSE replay frames", () => {
     { FixtureId: 18209181, Action: "goal", Confirmed: true, Seq: 739 },
   ]);
 });
+
+test("recognizes the production half-time status frame", () => {
+  const event = normalizeScoreRecord({
+    FixtureId: 18209181,
+    Action: "status",
+    Seq: 553,
+    Clock: { Running: false, Seconds: 2700 },
+    Data: { StatusId: 4 },
+    Score: {
+      Participant1: { Total: { Goals: 0 } },
+      Participant2: { Total: { Goals: 0 } },
+    },
+  }, 18209181);
+  assert.equal(event?.minute, 45);
+  assert.equal(event?.kind, "break");
+});

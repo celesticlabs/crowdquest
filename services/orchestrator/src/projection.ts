@@ -32,8 +32,7 @@ export function projectFixture(events: MatchEvent[]): FixtureProjection {
     resolutions.set("penalty-result", truth(scored ? "yes" : "no", penalty, "penalty score delta"));
   }
 
-  const halfTime = ordered.find((event) => event.kind === "break")
-    ?? last(ordered.filter((event) => event.minute <= 45));
+  const halfTime = ordered.find((event) => event.kind === "break");
   if (halfTime) {
     resolutions.set("before-break", truth(totalGoals(halfTime) > 0 ? "yes" : "no", halfTime, "half-time score"));
   }

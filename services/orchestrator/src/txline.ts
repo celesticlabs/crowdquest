@@ -213,8 +213,11 @@ export function normalizeScoreRecord(input: unknown, fixtureId: number): MatchEv
   const dataValue = input.Data ?? input.DataSoccer ?? input.dataSoccer;
   const data = isObject(dataValue) ? dataValue : {};
   const action = String(input.Action ?? data.Action ?? input.action ?? "update").toLowerCase();
-  const minute = integer(data.Minutes) ?? minuteFromClock(input.Clock ?? input.clock) ?? 0;
-  const kind: MatchEvent["kind"] = action.includes("final") ? "final" : action.includes("goal") ? "goal" : action.includes("penalty") || action.includes("shot") ? "chance" : action.includes("half") ? "break" : "kickoff";
+  const clock = input.Clock ?? input.clock;
+  const clockMinute = minuteFromClock(clock);
+  const minute = integer(data.Minutes) ?? clockMinute ?? (action.includes("final") ? 90 : 0);
+  const isHalfTimeStatus = action === "status" && clockMinute === 45 && isObject(clock) && clock.Running === false;
+  const kind: MatchEvent["kind"] = action.includes("final") ? "final" : action.includes("goal") ? "goal" : action.includes("penalty") || action.includes("shot") ? "chance" : action.includes("half") || isHalfTimeStatus ? "break" : "kickoff";
   return {
     id: `txline-${integer(input.Seq ?? input.seq) ?? integer(input.Id ?? input.id) ?? minute}`,
     minute,
